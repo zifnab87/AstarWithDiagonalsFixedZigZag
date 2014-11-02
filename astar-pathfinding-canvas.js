@@ -631,7 +631,7 @@ function findPath(world, pathStart, pathEnd)
 		} // keep iterating until the Open list is empty
 
 		//remove zigzag
-		result = removeZigZag(result,7);
+		result = removeZigZag(result,11);
 
 		return result;
 	}
