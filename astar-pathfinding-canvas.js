@@ -1,3 +1,13 @@
+// Modification on paths returned from A* algorithm (see below) when using any heuristic with diagonals
+// not to have the 
+// zig-zag effect in terrain with cavities as shown in stackoverflow question: 
+// http://stackoverflow.com/questions/26615312/how-do-i-minimize-the-number-of-turns-in-a-a-graph-search-result/26679161#26679161
+// New functions removeZigZag, lineWillGoThroughObstacles, formsALine, straightenLine
+// by Michail Michailidis
+// http://stackoverflow.com/users/986160
+
+
+
 // A* Pathfinding for HTML5 Canvas Tutorial
 // by Christer (McFunkypants) Kaitila
 // http://www.mcfunkypants.com
@@ -20,11 +30,37 @@ var spritesheet = null;
 var spritesheetLoaded = false;
 
 // the world grid: a 2d array of tiles
-var world = [[]];
+var worldTransposed =
+   [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0],
+    [1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0],
+    [1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0],
+    [1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0],
+    [1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]];
 
+//transpose
+var world = worldTransposed[0].map(function(col, i) { 
+  return worldTransposed.map(function(row) { 
+    return row[i] 
+  })
+});
 // size in the world in sprite tiles
-var worldWidth = 16;
-var worldHeight = 16;
+var worldWidth = world.length;
+var worldHeight = world[0].length;
 
 // size of a tile in pixels
 var tileWidth = 32;
@@ -72,26 +108,7 @@ function createWorld()
 {
 	console.log('Creating world...');
 
-	// create emptiness
-	for (var x=0; x < worldWidth; x++)
-	{
-		world[x] = [];
 
-		for (var y=0; y < worldHeight; y++)
-		{
-			world[x][y] = 0;
-		}
-	}
-
-	// scatter some walls
-	for (var x=0; x < worldWidth; x++)
-	{
-		for (var y=0; y < worldHeight; y++)
-		{
-			if (Math.random() > 0.75)
-			world[x][y] = 1;
-		}
-	}
 
 	// calculate initial possible path
 	// note: unlikely but possible to never find one...
@@ -100,10 +117,153 @@ function createWorld()
 	{
 		pathStart = [Math.floor(Math.random()*worldWidth),Math.floor(Math.random()*worldHeight)];
 		pathEnd = [Math.floor(Math.random()*worldWidth),Math.floor(Math.random()*worldHeight)];
+		console.log(pathStart);
+		console.log(pathEnd);
+		console.log(world[pathStart[0]][pathStart[1]]);
 		if (world[pathStart[0]][pathStart[1]] == 0)
-		currentPath = findPath(world,pathStart,pathEnd);
+			currentPath = findPath(world,pathStart,pathEnd);
 	}
+	
+
 	redraw();
+}	
+
+
+function removeZigZag(currentPath,lookahead){
+
+	//for each of the squares on the path - see lookahead more squares and check if it is in the path
+	for (var i=0; i<currentPath.length; i++){
+
+		
+		var toBeStraightened = [];
+		for (var j=i; j<lookahead+i+1 && j<currentPath.length; j++){		 
+
+			var startIndexToStraighten = i;
+			var endIndexToStraighten = i+1;
+			
+				
+			//check if the one from lookahead has the same x xor the same y with one later node in the path
+			//and they are not on the same line
+			if( (
+					(currentPath[i][0] == currentPath[j][0] && currentPath[i][1] != currentPath[j][1]) ||
+					(currentPath[i][1] == currentPath[j][1] && currentPath[i][0] != currentPath[j][0]) 
+				)
+			) {	
+				
+				endIndexToStraighten = j;
+
+				//now that we found something between i and j push it to be straightened
+				for (var k = startIndexToStraighten; k<=endIndexToStraighten; k++){
+					toBeStraightened.push(currentPath[k]);
+				}
+				//skip the loop forward
+				i = endIndexToStraighten-1;
+				break;
+			}
+					
+			
+		}
+
+		if (
+				(
+
+				toBeStraightened.length>=3 
+					
+			    && !formsALine(toBeStraightened) 
+			
+				//toBeStraightened 
+
+				
+				&& !lineWillGoThroughObstacles(currentPath[startIndexToStraighten], currentPath[endIndexToStraighten])
+
+				)
+				//|| toBeStraightened.length == 1 // length==1 einai gia otan einai ena mono anamesa sta dyo
+			 ){
+			console.log(toBeStraightened)
+			straightenLine(currentPath, startIndexToStraighten, endIndexToStraighten);
+		}
+
+		
+		
+
+	}
+
+	return currentPath;
+}
+
+function straightenLine(currentPath,fromIndex,toIndex){
+	for (var l=fromIndex; l<=toIndex; l++){
+
+				if (currentPath[fromIndex][0] == currentPath[toIndex][0]){
+					currentPath[l][0] = currentPath[fromIndex][0];
+			    }
+			    else if (currentPath[fromIndex][1] == currentPath[toIndex][1]){
+					currentPath[l][1] = currentPath[fromIndex][1];		
+				}
+			}
+}
+
+function lineWillGoThroughObstacles(point1, point2){
+	
+	var minX = Math.min(point1[0],point2[0]);
+	var maxX = Math.max(point1[0],point2[0]);
+	var minY = Math.min(point1[1],point2[1]);
+	var maxY = Math.max(point1[1],point2[1]);
+
+	//same row
+	if (point1[1] == point2[1]){
+		for (var i=minX; i<=maxX && i<worldWidth; i++){
+			if (world[i][point1[1]] == 1){ //obstacle
+				return true;
+			} 
+		}
+	}
+	//same column
+	if (point1[0] == point2[0]){
+		for (var i=minY; i<=maxY && i<worldHeight; i++){
+			if (world[point1[0]][i] == 1){ //obstacle
+				return true;
+			} 
+		}
+	}
+	return false;
+
+}
+
+
+function formsALine(pointsArray){
+	//only horizontal or vertical
+	if (!pointsArray || (pointsArray && pointsArray.length<1)){
+		return false;
+	}
+
+	var firstX = pointsArray[0][1];
+	var lastX = pointsArray[pointsArray.length-1][1];
+
+	var firstY = pointsArray[0][0];
+	var lastY = pointsArray[pointsArray.length-1][0];
+
+	
+	//vertical line
+	if (firstX == lastX){
+		for (var i=0; i<pointsArray.length; i++){
+			if (pointsArray[i][1]!=firstX){
+				return false;
+			}
+		}
+		return true;
+	}
+	//horizontal line
+	else if (firstY == lastY){
+		for (var i=0; i<pointsArray.length; i++){
+			if (pointsArray[i][0]!=firstY){
+				return false;
+			}
+		}
+		return true;
+	}		
+
+	return false;
 
 }
 
@@ -211,6 +371,7 @@ function canvasClick(e)
 
 	// calculate path
 	currentPath = findPath(world,pathStart,pathEnd);
+	
 	redraw();
 }
 
@@ -239,31 +400,33 @@ function findPath(world, pathStart, pathEnd)
 	var worldSize =	worldWidth * worldHeight;
 
 	// which heuristic should we use?
+	
 	// default: no diagonals (Manhattan)
-	var distanceFunction = ManhattanDistance;
-	var findNeighbours = function(){}; // empty
+	//var distanceFunction = ManhattanDistance;
+	//var findNeighbours = function(){}; // empty
 
-	/*
+	
 
 	// alternate heuristics, depending on your game:
 
 	// diagonals allowed but no sqeezing through cracks:
-	var distanceFunction = DiagonalDistance;
-	var findNeighbours = DiagonalNeighbours;
+	//var distanceFunction = DiagonalDistance;
+	//var findNeighbours = DiagonalNeighbours;
 
 	// diagonals and squeezing through cracks allowed:
 	var distanceFunction = DiagonalDistance;
 	var findNeighbours = DiagonalNeighboursFree;
 
 	// euclidean but no squeezing through cracks:
-	var distanceFunction = EuclideanDistance;
-	var findNeighbours = DiagonalNeighbours;
+	//var distanceFunction = EuclideanDistance;
+	//var findNeighbours = DiagonalNeighbours;
+	
 
 	// euclidean and squeezing through cracks allowed:
-	var distanceFunction = EuclideanDistance;
-	var findNeighbours = DiagonalNeighboursFree;
+	//var distanceFunction = EuclideanDistance;
+	//var findNeighbours = DiagonalNeighboursFree;
 
-	*/
+	
 
 	// distanceFunction functions
 	// these return how far away a point is to another
@@ -466,6 +629,10 @@ function findPath(world, pathStart, pathEnd)
 				Closed.push(myNode);
 			}
 		} // keep iterating until the Open list is empty
+
+		//remove zigzag
+		result = removeZigZag(result,7);
+
 		return result;
 	}
 
